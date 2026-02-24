@@ -4,7 +4,7 @@ import { dbGetPlant, dbPutPlant } from "@/lib/yardDb";
 import { resizeImageForIdentify } from "@/lib/resizeImage";
 import type { Candidate, PlantDbRecord } from "@/lib/types";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type PlantDetail = Omit<PlantDbRecord, "imageBlob"> & {
@@ -12,8 +12,11 @@ type PlantDetail = Omit<PlantDbRecord, "imageBlob"> & {
 };
 
 export default function PlantDetailPage() {
+  const router = useRouter();
   const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const id = params?.id;
+  const autoIdentify = searchParams.get("autoIdentify") === "1";
   const [plant, setPlant] = useState<PlantDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isIdentifying, setIsIdentifying] = useState(false);
@@ -180,6 +183,19 @@ export default function PlantDetailPage() {
     },
     [id, refreshPlant]
   );
+
+  useEffect(() => {
+    if (!id || !autoIdentify || !plant || isIdentifying) {
+      return;
+    }
+
+    if (plant.idStatus === "identifying" || plant.idStatus === "identified") {
+      return;
+    }
+
+    void identifyPlant();
+    router.replace(`/plant/${id}`);
+  }, [autoIdentify, id, identifyPlant, isIdentifying, plant, router]);
 
   return (
     <div className="min-h-screen bg-emerald-50/40 px-4 py-6 text-zinc-900 sm:px-6">

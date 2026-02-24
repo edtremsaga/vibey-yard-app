@@ -4,6 +4,7 @@ import CameraCapture from "@/components/CameraCapture";
 import { dbDeletePlant, dbGetAllPlants, dbGetPlant, dbPutPlant } from "@/lib/yardDb";
 import type { PlantDbRecord } from "@/lib/types";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 type Plant = Omit<
@@ -22,6 +23,7 @@ function createPlantId(): string {
 }
 
 export default function Home() {
+  const router = useRouter();
   const [plants, setPlants] = useState<Plant[]>([]);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
@@ -154,9 +156,9 @@ export default function Home() {
     setPendingNickname("");
   };
 
-  const handleSave = async () => {
+  const savePendingPlant = async (): Promise<string | null> => {
     if (!pendingFile) {
-      return;
+      return null;
     }
 
     const trimmedNickname = pendingNickname.trim();
@@ -183,8 +185,21 @@ export default function Home() {
 
       setPlants((current) => [newPlant, ...current]);
       clearPending();
+      return record.id;
     } catch {
       // Keep UI stable when persistence fails.
+      return null;
+    }
+  };
+
+  const handleSave = async () => {
+    await savePendingPlant();
+  };
+
+  const handleSaveAndIdentify = async () => {
+    const id = await savePendingPlant();
+    if (id) {
+      router.push(`/plant/${id}?autoIdentify=1`);
     }
   };
 
@@ -307,6 +322,16 @@ export default function Home() {
                 className="inline-flex min-h-12 items-center justify-center rounded-full bg-emerald-600 px-6 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-emerald-500"
               >
                 Save to Yard
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  void handleSaveAndIdentify();
+                }}
+                className="inline-flex min-h-12 items-center justify-center rounded-full bg-emerald-700 px-6 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-emerald-600"
+              >
+                Save &amp; Identify
               </button>
 
               <CameraCapture label="Retake" onCapture={handleCapture} />
