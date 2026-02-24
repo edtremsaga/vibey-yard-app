@@ -96,8 +96,6 @@ export default function PlantDetailPage() {
       return;
     }
 
-    setIsIdentifying(true);
-
     try {
       const current = await dbGetPlant(id);
       if (!current) {
@@ -107,6 +105,7 @@ export default function PlantDetailPage() {
       if (current.idStatus === "identifying") {
         return;
       }
+      setIsIdentifying(true);
 
       await dbPutPlant({
         ...current,
@@ -247,7 +246,7 @@ export default function PlantDetailPage() {
 
             <button
               type="button"
-              disabled={isIdentifying}
+              disabled={isIdentifying || plant?.idStatus === "identifying"}
               onClick={() => {
                 void identifyPlant();
               }}
