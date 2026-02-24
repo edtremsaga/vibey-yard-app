@@ -1,9 +1,4 @@
-export type PlantDbRecord = {
-  id: string;
-  createdAt: string;
-  nickname: string | null;
-  imageBlob: Blob;
-};
+import type { PlantDbRecord } from "@/lib/types";
 
 const DB_NAME = "yard-app";
 const DB_VERSION = 1;
@@ -35,6 +30,21 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
+function normalizePlantRecord(raw: unknown): PlantDbRecord {
+  const record = raw as Partial<PlantDbRecord>;
+
+  return {
+    id: String(record.id ?? ""),
+    createdAt: String(record.createdAt ?? ""),
+    nickname: record.nickname ?? null,
+    imageBlob: record.imageBlob as Blob,
+    idStatus: record.idStatus ?? "unidentified",
+    identifiedAt: record.identifiedAt,
+    candidates: record.candidates,
+    chosenCandidate: record.chosenCandidate,
+  };
+}
+
 export async function dbGetAllPlants(): Promise<PlantDbRecord[]> {
   const db = await openDb();
 
@@ -44,7 +54,7 @@ export async function dbGetAllPlants(): Promise<PlantDbRecord[]> {
     const request = store.getAll();
 
     request.onsuccess = () => {
-      resolve(request.result as PlantDbRecord[]);
+      resolve((request.result as unknown[]).map((record) => normalizePlantRecord(record)));
     };
 
     request.onerror = () => {
@@ -74,7 +84,12 @@ export async function dbGetPlant(id: string): Promise<PlantDbRecord | null> {
     const request = store.get(id);
 
     request.onsuccess = () => {
-      resolve((request.result as PlantDbRecord | undefined) ?? null);
+      if (!request.result) {
+        resolve(null);
+        return;
+      }
+
+      resolve(normalizePlantRecord(request.result));
     };
 
     request.onerror = () => {

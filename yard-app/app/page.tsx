@@ -2,12 +2,14 @@
 
 import CameraCapture from "@/components/CameraCapture";
 import { dbDeletePlant, dbGetAllPlants, dbGetPlant, dbPutPlant } from "@/lib/yardDb";
+import type { PlantDbRecord } from "@/lib/types";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
-type Plant = {
-  id: string;
-  createdAt: string;
-  nickname: string | null;
+type Plant = Omit<
+  PlantDbRecord,
+  "imageBlob" | "identifiedAt" | "candidates" | "chosenCandidate"
+> & {
   imageUrl: string;
 };
 
@@ -63,7 +65,7 @@ export default function Home() {
     const dismissed = window.localStorage.getItem("vibey-yard-a2hsDismissed") === "1";
     const shouldShow = isIos && isIosSafari && !isStandalone && !dismissed;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setShowA2hsHint(shouldShow);
+    setShowA2hsHint((current) => (current === shouldShow ? current : shouldShow));
   }, [hasMounted]);
 
   useEffect(() => {
@@ -77,6 +79,7 @@ export default function Home() {
           id: record.id,
           createdAt: record.createdAt,
           nickname: record.nickname,
+          idStatus: record.idStatus,
           imageUrl: URL.createObjectURL(record.imageBlob),
         }));
 
@@ -163,6 +166,7 @@ export default function Home() {
       createdAt: new Date().toISOString(),
       nickname: trimmedNickname === "" ? null : trimmedNickname,
       imageBlob: pendingFile,
+      idStatus: "unidentified" as const,
     };
 
     try {
@@ -173,6 +177,7 @@ export default function Home() {
         id: record.id,
         createdAt: record.createdAt,
         nickname: record.nickname,
+        idStatus: record.idStatus,
         imageUrl,
       };
 
@@ -321,8 +326,26 @@ export default function Home() {
               {plants.map((plant) => (
                 <article
                   key={plant.id}
-                  className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-zinc-200"
+                  className="relative overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-zinc-200"
                 >
+                  {plant.idStatus === "identified" ? (
+                    <span className="absolute top-2 left-2 z-20 rounded-full bg-emerald-600 px-2 py-1 text-xs font-medium text-white shadow-sm">
+                      Identified
+                    </span>
+                  ) : plant.idStatus === "identifying" ? (
+                    <span className="absolute top-2 left-2 z-20 rounded-full bg-amber-500 px-2 py-1 text-xs font-medium text-white shadow-sm">
+                      Identifying…
+                    </span>
+                  ) : plant.idStatus === "failed" ? (
+                    <span className="absolute top-2 left-2 z-20 rounded-full bg-red-500 px-2 py-1 text-xs font-medium text-white shadow-sm">
+                      Failed
+                    </span>
+                  ) : null}
+                  <Link
+                    href={`/plant/${plant.id}`}
+                    aria-label={`View ${plant.nickname ?? "plant"} details`}
+                    className="absolute inset-0 z-10 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  />
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={plant.imageUrl}
@@ -331,7 +354,7 @@ export default function Home() {
                   />
                   <div className="space-y-1 p-3">
                     {editingId === plant.id ? (
-                      <div className="space-y-2">
+                      <div className="relative z-20 space-y-2">
                         <input
                           type="text"
                           value={editingValue}
@@ -363,7 +386,7 @@ export default function Home() {
                       </p>
                     )}
                     <p className="text-xs text-zinc-500">{new Date(plant.createdAt).toLocaleString()}</p>
-                    <div className="flex items-center gap-3 pt-1">
+                    <div className="relative z-20 flex items-center gap-3 pt-1">
                       <button
                         type="button"
                         onClick={() => handleRenameStart(plant)}
