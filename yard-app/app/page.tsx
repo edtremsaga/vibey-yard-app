@@ -1,7 +1,7 @@
 "use client";
 
 import CameraCapture from "@/components/CameraCapture";
-import { dbGetAllPlants, dbPutPlant } from "@/lib/yardDb";
+import { dbDeletePlant, dbGetAllPlants, dbGetPlant, dbPutPlant } from "@/lib/yardDb";
 import { useEffect, useRef, useState } from "react";
 
 type Plant = {
@@ -24,6 +24,8 @@ export default function Home() {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [pendingNickname, setPendingNickname] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState("");
   const plantImageUrlsRef = useRef<Set<string>>(new Set());
   const pendingImageUrlRef = useRef<string | null>(null);
 
@@ -149,6 +151,58 @@ export default function Home() {
     }
   };
 
+  const handleRenameStart = (plant: Plant) => {
+    setEditingId(plant.id);
+    setEditingValue(plant.nickname ?? "");
+  };
+
+  const handleRenameCancel = () => {
+    setEditingId(null);
+    setEditingValue("");
+  };
+
+  const handleRenameSave = async () => {
+    if (!editingId) {
+      return;
+    }
+
+    const id = editingId;
+    const trimmedNickname = editingValue.trim();
+    const nickname = trimmedNickname === "" ? null : trimmedNickname;
+
+    setPlants((current) =>
+      current.map((plant) => (plant.id === id ? { ...plant, nickname } : plant))
+    );
+    handleRenameCancel();
+
+    try {
+      const record = await dbGetPlant(id);
+      if (!record) {
+        return;
+      }
+
+      await dbPutPlant({ ...record, nickname });
+    } catch {
+      // Keep UI stable when persistence fails.
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Delete this plant?")) {
+      return;
+    }
+
+    try {
+      await dbDeletePlant(id);
+      setPlants((current) => current.filter((plant) => plant.id !== id));
+      if (editingId === id) {
+        handleRenameCancel();
+      }
+    } catch {
+      // Keep UI stable when persistence fails.
+    }
+  };
+
   const isConfirming = pendingImage !== null;
 
   return (
@@ -219,10 +273,57 @@ export default function Home() {
                     className="aspect-square w-full object-cover"
                   />
                   <div className="space-y-1 p-3">
-                    <p className="truncate text-sm font-medium text-zinc-800">
-                      {plant.nickname ?? "Unnamed plant"}
-                    </p>
+                    {editingId === plant.id ? (
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          value={editingValue}
+                          onChange={(event) => setEditingValue(event.target.value)}
+                          className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"
+                        />
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void handleRenameSave();
+                            }}
+                            className="text-xs font-medium text-emerald-700 hover:text-emerald-600"
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleRenameCancel}
+                            className="text-xs font-medium text-zinc-500 hover:text-zinc-700"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="truncate text-sm font-medium text-zinc-800">
+                        {plant.nickname ?? "Unnamed plant"}
+                      </p>
+                    )}
                     <p className="text-xs text-zinc-500">{new Date(plant.createdAt).toLocaleString()}</p>
+                    <div className="flex items-center gap-3 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleRenameStart(plant)}
+                        className="text-xs font-medium text-zinc-600 hover:text-zinc-800"
+                      >
+                        Rename
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void handleDelete(plant.id);
+                        }}
+                        className="text-xs font-medium text-red-600 hover:text-red-500"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 </article>
               ))}

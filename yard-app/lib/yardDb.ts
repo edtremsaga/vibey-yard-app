@@ -65,6 +65,36 @@ export async function dbGetAllPlants(): Promise<PlantDbRecord[]> {
   });
 }
 
+export async function dbGetPlant(id: string): Promise<PlantDbRecord | null> {
+  const db = await openDb();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.get(id);
+
+    request.onsuccess = () => {
+      resolve((request.result as PlantDbRecord | undefined) ?? null);
+    };
+
+    request.onerror = () => {
+      reject(request.error ?? new Error("Failed to read plant"));
+    };
+
+    tx.oncomplete = () => {
+      db.close();
+    };
+
+    tx.onerror = () => {
+      reject(tx.error ?? new Error("Failed to read plant"));
+    };
+
+    tx.onabort = () => {
+      reject(tx.error ?? new Error("Failed to read plant"));
+    };
+  });
+}
+
 export async function dbPutPlant(record: PlantDbRecord): Promise<void> {
   const db = await openDb();
 
