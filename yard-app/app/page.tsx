@@ -26,6 +26,22 @@ export default function Home() {
   const [pendingNickname, setPendingNickname] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
+  const [showA2hsHint, setShowA2hsHint] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+
+    const ua = window.navigator.userAgent;
+    const isIos = /iPad|iPhone|iPod/.test(ua);
+    const isIosSafari =
+      ua.includes("Safari") &&
+      !ua.includes("CriOS") &&
+      !ua.includes("FxiOS") &&
+      !ua.includes("EdgiOS") &&
+      !ua.includes("OPiOS");
+    const isStandalone = (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+    const dismissed = window.localStorage.getItem("vibey-yard-a2hsDismissed") === "1";
+
+    return isIos && isIosSafari && !isStandalone && !dismissed;
+  });
   const plantImageUrlsRef = useRef<Set<string>>(new Set());
   const pendingImageUrlRef = useRef<string | null>(null);
 
@@ -188,6 +204,10 @@ export default function Home() {
   };
 
   const handleDelete = async (id: string) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
     if (!window.confirm("Delete this plant?")) {
       return;
     }
@@ -204,6 +224,12 @@ export default function Home() {
   };
 
   const isConfirming = pendingImage !== null;
+  const dismissA2hsHint = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("vibey-yard-a2hsDismissed", "1");
+    }
+    setShowA2hsHint(false);
+  };
 
   return (
     <div className="min-h-screen bg-emerald-50/40 px-4 py-6 text-zinc-900 sm:px-6">
@@ -212,6 +238,21 @@ export default function Home() {
           <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
           <p className="text-base text-zinc-600">{subtitle}</p>
         </header>
+        {showA2hsHint ? (
+          <section className="mb-4 rounded-xl bg-emerald-100/70 p-3 ring-1 ring-emerald-200">
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Tip</p>
+            <p className="mt-1 text-sm text-zinc-700">
+              Add this to your Home Screen for quick access. Tap Share → Add to Home Screen.
+            </p>
+            <button
+              type="button"
+              onClick={dismissA2hsHint}
+              className="mt-2 text-xs font-medium text-emerald-700 hover:text-emerald-600"
+            >
+              Got it
+            </button>
+          </section>
+        ) : null}
 
         {isConfirming && pendingImage ? (
           <section className="space-y-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-200">
