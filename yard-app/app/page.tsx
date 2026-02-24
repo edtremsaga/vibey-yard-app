@@ -26,8 +26,30 @@ export default function Home() {
   const [pendingNickname, setPendingNickname] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
-  const [showA2hsHint, setShowA2hsHint] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
+  const [showA2hsHint, setShowA2hsHint] = useState(false);
+  const [hasMounted, setHasMounted] = useState(false);
+  const plantImageUrlsRef = useRef<Set<string>>(new Set());
+  const pendingImageUrlRef = useRef<string | null>(null);
+
+  const hasPlants = plants.length > 0;
+
+  const title = "Your Yard";
+  const subtitle = "Capture and remember what’s growing.";
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setHasMounted(true);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasMounted) {
+      return;
+    }
 
     const ua = window.navigator.userAgent;
     const isIos = /iPad|iPhone|iPod/.test(ua);
@@ -39,16 +61,10 @@ export default function Home() {
       !ua.includes("OPiOS");
     const isStandalone = (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
     const dismissed = window.localStorage.getItem("vibey-yard-a2hsDismissed") === "1";
-
-    return isIos && isIosSafari && !isStandalone && !dismissed;
-  });
-  const plantImageUrlsRef = useRef<Set<string>>(new Set());
-  const pendingImageUrlRef = useRef<string | null>(null);
-
-  const hasPlants = plants.length > 0;
-
-  const title = "Your Yard";
-  const subtitle = "Capture and remember what’s growing.";
+    const shouldShow = isIos && isIosSafari && !isStandalone && !dismissed;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setShowA2hsHint(shouldShow);
+  }, [hasMounted]);
 
   useEffect(() => {
     let active = true;
