@@ -1,13 +1,14 @@
 "use client";
 
 import CameraCapture from "@/components/CameraCapture";
-import { useState } from "react";
+import { dbGetAllPlants, dbPutPlant } from "@/lib/yardDb";
+import { useEffect, useRef, useState } from "react";
 
 type Plant = {
   id: string;
   createdAt: string;
   nickname: string | null;
-  imageDataUrl: string;
+  imageUrl: string;
 };
 
 function createPlantId(): string {
@@ -20,39 +21,132 @@ function createPlantId(): string {
 
 export default function Home() {
   const [plants, setPlants] = useState<Plant[]>([]);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [pendingNickname, setPendingNickname] = useState("");
+  const plantImageUrlsRef = useRef<Set<string>>(new Set());
+  const pendingImageUrlRef = useRef<string | null>(null);
 
   const hasPlants = plants.length > 0;
 
   const title = "Your Yard";
   const subtitle = "Capture and remember what’s growing.";
 
-  const handleCapture = (imageDataUrl: string) => {
-    setPendingImage(imageDataUrl);
+  useEffect(() => {
+    let active = true;
+
+    const loadPlants = async () => {
+      try {
+        const records = await dbGetAllPlants();
+        const sorted = [...records].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        const loadedPlants = sorted.map((record) => ({
+          id: record.id,
+          createdAt: record.createdAt,
+          nickname: record.nickname,
+          imageUrl: URL.createObjectURL(record.imageBlob),
+        }));
+
+        if (!active) {
+          for (const plant of loadedPlants) {
+            URL.revokeObjectURL(plant.imageUrl);
+          }
+          return;
+        }
+
+        setPlants(loadedPlants);
+      } catch {
+        if (active) {
+          setPlants([]);
+        }
+      }
+    };
+
+    void loadPlants();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const nextUrls = new Set(plants.map((plant) => plant.imageUrl));
+
+    for (const existingUrl of plantImageUrlsRef.current) {
+      if (!nextUrls.has(existingUrl)) {
+        URL.revokeObjectURL(existingUrl);
+      }
+    }
+
+    plantImageUrlsRef.current = nextUrls;
+  }, [plants]);
+
+  useEffect(() => {
+    return () => {
+      for (const existingUrl of plantImageUrlsRef.current) {
+        URL.revokeObjectURL(existingUrl);
+      }
+      plantImageUrlsRef.current.clear();
+
+      if (pendingImageUrlRef.current) {
+        URL.revokeObjectURL(pendingImageUrlRef.current);
+        pendingImageUrlRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleCapture = (file: File) => {
+    const objectUrl = URL.createObjectURL(file);
+
+    if (pendingImageUrlRef.current) {
+      URL.revokeObjectURL(pendingImageUrlRef.current);
+    }
+
+    pendingImageUrlRef.current = objectUrl;
+    setPendingFile(file);
+    setPendingImage(objectUrl);
   };
 
   const clearPending = () => {
+    if (pendingImageUrlRef.current) {
+      URL.revokeObjectURL(pendingImageUrlRef.current);
+      pendingImageUrlRef.current = null;
+    }
+
+    setPendingFile(null);
     setPendingImage(null);
     setPendingNickname("");
   };
 
-  const handleSave = () => {
-    if (!pendingImage) {
+  const handleSave = async () => {
+    if (!pendingFile) {
       return;
     }
 
     const trimmedNickname = pendingNickname.trim();
 
-    const newPlant: Plant = {
+    const record = {
       id: createPlantId(),
       createdAt: new Date().toISOString(),
       nickname: trimmedNickname === "" ? null : trimmedNickname,
-      imageDataUrl: pendingImage,
+      imageBlob: pendingFile,
     };
 
-    setPlants((current) => [newPlant, ...current]);
-    clearPending();
+    try {
+      await dbPutPlant(record);
+      const imageUrl = URL.createObjectURL(record.imageBlob);
+
+      const newPlant: Plant = {
+        id: record.id,
+        createdAt: record.createdAt,
+        nickname: record.nickname,
+        imageUrl,
+      };
+
+      setPlants((current) => [newPlant, ...current]);
+      clearPending();
+    } catch {
+      // Keep UI stable when persistence fails.
+    }
   };
 
   const isConfirming = pendingImage !== null;
@@ -67,6 +161,7 @@ export default function Home() {
 
         {isConfirming && pendingImage ? (
           <section className="space-y-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-200">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={pendingImage}
               alt="Pending plant capture"
@@ -90,7 +185,9 @@ export default function Home() {
             <div className="flex flex-col gap-3 sm:flex-row">
               <button
                 type="button"
-                onClick={handleSave}
+                onClick={() => {
+                  void handleSave();
+                }}
                 className="inline-flex min-h-12 items-center justify-center rounded-full bg-emerald-600 px-6 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-emerald-500"
               >
                 Save to Yard
@@ -115,8 +212,9 @@ export default function Home() {
                   key={plant.id}
                   className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-zinc-200"
                 >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={plant.imageDataUrl}
+                    src={plant.imageUrl}
                     alt={plant.nickname ?? "Yard plant"}
                     className="aspect-square w-full object-cover"
                   />
@@ -137,6 +235,9 @@ export default function Home() {
         ) : (
           <section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-zinc-200">
             <CameraCapture label="Add First Plant" onCapture={handleCapture} />
+            <p className="mt-3 text-center text-xs text-zinc-500">
+              Saved on this device (no cloud sync).
+            </p>
           </section>
         )}
       </main>

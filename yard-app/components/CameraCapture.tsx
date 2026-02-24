@@ -4,7 +4,7 @@ import { useRef } from "react";
 
 type CameraCaptureProps = {
   label: string;
-  onCapture(imageDataUrl: string): void;
+  onCapture(file: File): void;
 };
 
 export default function CameraCapture({ label, onCapture }: CameraCaptureProps) {
@@ -21,21 +21,8 @@ export default function CameraCapture({ label, onCapture }: CameraCaptureProps) 
       return;
     }
 
-    const reader = new FileReader();
-
-    reader.onload = () => {
-      const result = reader.result;
-      if (typeof result === "string") {
-        onCapture(result);
-      }
-      event.target.value = "";
-    };
-
-    reader.onerror = () => {
-      event.target.value = "";
-    };
-
-    reader.readAsDataURL(file);
+    onCapture(file);
+    event.target.value = "";
   };
 
   return (
