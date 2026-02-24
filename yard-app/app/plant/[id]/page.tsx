@@ -1,6 +1,7 @@
 "use client";
 
 import { dbGetPlant, dbPutPlant } from "@/lib/yardDb";
+import { resizeImageForIdentify } from "@/lib/resizeImage";
 import type { Candidate, PlantDbRecord } from "@/lib/types";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -100,16 +101,25 @@ export default function PlantDetailPage() {
         return;
       }
 
+      if (current.idStatus === "identifying") {
+        return;
+      }
+
       await dbPutPlant({
         ...current,
         idStatus: "identifying",
       });
       await refreshPlant();
 
+      const resizedBlob = await resizeImageForIdentify(current.imageBlob);
+
+      const fd = new FormData();
+      fd.append("plantId", id);
+      fd.append("image", resizedBlob, "plant.jpg");
+
       const response = await fetch("/api/identify", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plantId: id }),
+        body: fd,
       });
 
       if (!response.ok) {
@@ -118,6 +128,9 @@ export default function PlantDetailPage() {
 
       const payload = (await response.json()) as { candidates?: Candidate[] };
       const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
+      if (candidates.length === 0) {
+        throw new Error("No candidates");
+      }
 
       const latest = await dbGetPlant(id);
       if (!latest) {
