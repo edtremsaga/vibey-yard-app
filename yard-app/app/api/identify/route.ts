@@ -81,16 +81,22 @@ export async function POST(request: Request) {
       },
     });
 
-    const outputText = response.output_text;
-    if (!outputText) {
+    const firstOutput = response.output?.[0];
+    const outputItem =
+      firstOutput && typeof firstOutput === "object" && "content" in firstOutput
+        ? firstOutput.content?.[0]
+        : undefined;
+    if (!outputItem || outputItem.type !== "output_text") {
       return NextResponse.json({ error: "Identify failed" }, { status: 500 });
     }
 
-    const parsed = JSON.parse(outputText) as { candidates?: Candidate[] };
+    const parsed = JSON.parse(outputItem.text) as { candidates?: Candidate[] };
     const candidates = Array.isArray(parsed.candidates) ? parsed.candidates : [];
 
     return NextResponse.json({ candidates });
-  } catch {
-    return NextResponse.json({ error: "Identify failed" }, { status: 500 });
+  } catch (err) {
+    console.error("Identify failed:", err);
+    const detail = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: "Identify failed", detail }, { status: 500 });
   }
 }
