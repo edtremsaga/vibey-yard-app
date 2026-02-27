@@ -156,6 +156,9 @@ export default function PlantDetailPage() {
 
       const response = await fetch("/api/identify", {
         method: "POST",
+        headers: {
+          "x-identify-token": process.env.NEXT_PUBLIC_IDENTIFY_API_TOKEN ?? "",
+        },
         body: fd,
       });
 
