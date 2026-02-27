@@ -323,39 +323,43 @@ export default function PlantDetailPage() {
                   Identification Candidates
                 </p>
                 <ul className="space-y-2">
-                  {plant.candidates.map((candidate, index) => (
-                    <li
-                      key={`${candidate.commonName}-${candidate.scientificName ?? "none"}-${index}`}
-                      className="rounded-lg bg-white p-3 ring-1 ring-zinc-200"
-                    >
-                      <p className="text-sm font-medium text-zinc-900">{candidate.commonName}</p>
-                      {candidate.scientificName ? (
-                        <p className="text-sm text-zinc-600 italic">{candidate.scientificName}</p>
-                      ) : null}
-                      <div className="mt-1 flex items-center gap-2">
-                        <span className="text-xs text-zinc-500">
-                          Confidence:{" "}
-                          {typeof candidate.confidence === "number"
-                            ? `${Math.round(candidate.confidence * 100)}%`
-                            : "N/A"}
-                        </span>
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-xs font-medium ${getConfidenceBadge(candidate.confidence).className}`}
-                        >
-                          {getConfidenceBadge(candidate.confidence).label}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void handleChooseCandidate(candidate);
-                        }}
-                        className="mt-2 text-xs font-medium text-emerald-700 hover:text-emerald-600"
+                  {plant.candidates.map((candidate, index) => {
+                    const badge = getConfidenceBadge(candidate.confidence);
+
+                    return (
+                      <li
+                        key={`${candidate.commonName}-${candidate.scientificName ?? "none"}-${index}`}
+                        className="rounded-lg bg-white p-3 ring-1 ring-zinc-200"
                       >
-                        Use this
-                      </button>
-                    </li>
-                  ))}
+                        <p className="text-sm font-medium text-zinc-900">{candidate.commonName}</p>
+                        {candidate.scientificName ? (
+                          <p className="text-sm text-zinc-600 italic">{candidate.scientificName}</p>
+                        ) : null}
+                        <div className="mt-1 flex items-center gap-2">
+                          <span className="text-xs text-zinc-500">
+                            Confidence:{" "}
+                            {typeof candidate.confidence === "number"
+                              ? `${Math.round(candidate.confidence * 100)}%`
+                              : "N/A"}
+                          </span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.className}`}
+                          >
+                            {badge.label}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handleChooseCandidate(candidate);
+                          }}
+                          className="mt-2 text-xs font-medium text-emerald-700 hover:text-emerald-600"
+                        >
+                          Use this
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             ) : null}
