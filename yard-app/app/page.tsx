@@ -219,6 +219,12 @@ export default function Home() {
     }
 
     const id = editingId;
+    const previousPlant = plants.find((plant) => plant.id === id);
+    if (!previousPlant) {
+      handleRenameCancel();
+      return;
+    }
+
     const trimmedNickname = editingValue.trim();
     const nickname = trimmedNickname === "" ? null : trimmedNickname;
 
@@ -235,7 +241,11 @@ export default function Home() {
 
       await dbPutPlant({ ...record, nickname });
     } catch {
-      // Keep UI stable when persistence fails.
+      setPlants((current) =>
+        current.map((plant) =>
+          plant.id === id ? { ...plant, nickname: previousPlant.nickname } : plant
+        )
+      );
     }
   };
 
