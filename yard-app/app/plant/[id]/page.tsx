@@ -21,6 +21,35 @@ export default function PlantDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isIdentifying, setIsIdentifying] = useState(false);
   const imageUrlRef = useRef<string | null>(null);
+  const identifyInFlightRef = useRef(false);
+
+  const getConfidenceBadge = (confidence?: number): { label: string; className: string } => {
+    if (typeof confidence !== "number") {
+      return {
+        label: "Unknown",
+        className: "bg-zinc-200 text-zinc-700",
+      };
+    }
+
+    if (confidence >= 0.7) {
+      return {
+        label: "High",
+        className: "bg-emerald-100 text-emerald-800",
+      };
+    }
+
+    if (confidence >= 0.4) {
+      return {
+        label: "Medium",
+        className: "bg-amber-100 text-amber-800",
+      };
+    }
+
+    return {
+      label: "Low",
+      className: "bg-red-100 text-red-800",
+    };
+  };
 
   const refreshPlant = useCallback(async () => {
     if (!id) {
@@ -96,6 +125,12 @@ export default function PlantDetailPage() {
       return;
     }
 
+    if (identifyInFlightRef.current) {
+      return;
+    }
+
+    identifyInFlightRef.current = true;
+
     try {
       const current = await dbGetPlant(id);
       if (!current) {
@@ -141,10 +176,10 @@ export default function PlantDetailPage() {
 
       await dbPutPlant({
         ...latest,
-        idStatus: "unidentified",
+        idStatus: "identified",
         candidates,
         chosenCandidate: undefined,
-        identifiedAt: undefined,
+        identifiedAt: new Date().toISOString(),
       });
       await refreshPlant();
     } catch {
@@ -157,6 +192,7 @@ export default function PlantDetailPage() {
         await refreshPlant();
       }
     } finally {
+      identifyInFlightRef.current = false;
       setIsIdentifying(false);
     }
   }, [id, refreshPlant]);
@@ -195,6 +231,25 @@ export default function PlantDetailPage() {
     void identifyPlant();
     router.replace(`/plant/${id}`);
   }, [autoIdentify, id, identifyPlant, isIdentifying, plant, router]);
+
+  const shouldShowPrimaryIdentifyButton = !(
+    plant?.candidates &&
+    plant.candidates.length > 0 &&
+    plant.idStatus === "identified" &&
+    !plant.chosenCandidate
+  );
+  const shouldShowSecondaryReidentifyButton =
+    !!plant?.chosenCandidate ||
+    (!!plant?.candidates &&
+      plant.candidates.length > 0 &&
+      plant.idStatus === "identified" &&
+      !plant.chosenCandidate);
+  const topCandidateConfidence = plant?.candidates?.[0]?.confidence;
+  const showLowConfidenceTip =
+    !!plant?.candidates &&
+    plant.candidates.length > 0 &&
+    !plant.chosenCandidate &&
+    (typeof topCandidateConfidence !== "number" || topCandidateConfidence < 0.2);
 
   return (
     <div className="min-h-screen bg-emerald-50/40 px-4 py-6 text-zinc-900 sm:px-6">
@@ -244,19 +299,26 @@ export default function PlantDetailPage() {
               )}
             </div>
 
-            <button
-              type="button"
-              disabled={isIdentifying || plant?.idStatus === "identifying"}
-              onClick={() => {
-                void identifyPlant();
-              }}
-              className="inline-flex min-h-12 items-center justify-center rounded-full bg-emerald-600 px-6 py-3 text-base font-semibold text-white disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-500"
-            >
-              {isIdentifying ? "Identifying..." : "Identify this plant"}
-            </button>
+            {shouldShowPrimaryIdentifyButton ? (
+              <button
+                type="button"
+                disabled={isIdentifying || plant?.idStatus === "identifying"}
+                onClick={() => {
+                  void identifyPlant();
+                }}
+                className="inline-flex min-h-12 items-center justify-center rounded-full bg-emerald-600 px-6 py-3 text-base font-semibold text-white disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-500"
+              >
+                {isIdentifying ? "Identifying..." : "Identify this plant"}
+              </button>
+            ) : null}
 
             {plant.candidates && plant.candidates.length > 0 && !plant.chosenCandidate ? (
               <div className="space-y-2 rounded-xl bg-zinc-50 p-3 ring-1 ring-zinc-200">
+                {showLowConfidenceTip ? (
+                  <p className="text-sm text-zinc-700">
+                    Not sure on this one. Try a closer photo of leaves or flowers in good light.
+                  </p>
+                ) : null}
                 <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
                   Identification Candidates
                 </p>
@@ -270,12 +332,19 @@ export default function PlantDetailPage() {
                       {candidate.scientificName ? (
                         <p className="text-sm text-zinc-600 italic">{candidate.scientificName}</p>
                       ) : null}
-                      <p className="text-xs text-zinc-500">
-                        Confidence:{" "}
-                        {typeof candidate.confidence === "number"
-                          ? `${Math.round(candidate.confidence * 100)}%`
-                          : "N/A"}
-                      </p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="text-xs text-zinc-500">
+                          Confidence:{" "}
+                          {typeof candidate.confidence === "number"
+                            ? `${Math.round(candidate.confidence * 100)}%`
+                            : "N/A"}
+                        </span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs font-medium ${getConfidenceBadge(candidate.confidence).className}`}
+                        >
+                          {getConfidenceBadge(candidate.confidence).label}
+                        </span>
+                      </div>
                       <button
                         type="button"
                         onClick={() => {
@@ -291,7 +360,7 @@ export default function PlantDetailPage() {
               </div>
             ) : null}
 
-            {plant.chosenCandidate ? (
+            {shouldShowSecondaryReidentifyButton ? (
               <button
                 type="button"
                 disabled={isIdentifying}
