@@ -1,14 +1,19 @@
 "use client";
 
+import CameraCapture from "@/components/CameraCapture";
 import { dbGetPlant, dbPutPlant } from "@/lib/yardDb";
 import { resizeImageForIdentify } from "@/lib/resizeImage";
-import type { Candidate, PlantDbRecord } from "@/lib/types";
+import type { Candidate, PlantDbRecord, PlantImage } from "@/lib/types";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type PlantDetail = Omit<PlantDbRecord, "imageBlob"> & {
+type PlantDetailImage = Omit<PlantImage, "blob"> & {
   imageUrl: string;
+};
+
+type PlantDetail = Omit<PlantDbRecord, "images"> & {
+  images: PlantDetailImage[];
 };
 
 export default function PlantDetailPage() {
@@ -20,8 +25,18 @@ export default function PlantDetailPage() {
   const [plant, setPlant] = useState<PlantDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isIdentifying, setIsIdentifying] = useState(false);
-  const imageUrlRef = useRef<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const imageUrlsRef = useRef<Set<string>>(new Set());
+  const pendingImageUrlRef = useRef<string | null>(null);
   const identifyInFlightRef = useRef(false);
+
+  const createImageId = () => {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+    return String(Date.now());
+  };
 
   const getConfidenceBadge = (confidence?: number): { label: string; className: string } => {
     if (typeof confidence !== "number") {
@@ -53,10 +68,6 @@ export default function PlantDetailPage() {
 
   const refreshPlant = useCallback(async () => {
     if (!id) {
-      if (imageUrlRef.current) {
-        URL.revokeObjectURL(imageUrlRef.current);
-        imageUrlRef.current = null;
-      }
       setPlant(null);
       return;
     }
@@ -64,25 +75,22 @@ export default function PlantDetailPage() {
     try {
       const record = await dbGetPlant(id);
       if (!record) {
-        if (imageUrlRef.current) {
-          URL.revokeObjectURL(imageUrlRef.current);
-          imageUrlRef.current = null;
-        }
         setPlant(null);
         return;
       }
-
-      const nextImageUrl = URL.createObjectURL(record.imageBlob);
-      if (imageUrlRef.current) {
-        URL.revokeObjectURL(imageUrlRef.current);
-      }
-      imageUrlRef.current = nextImageUrl;
 
       setPlant({
         id: record.id,
         createdAt: record.createdAt,
         nickname: record.nickname,
-        imageUrl: nextImageUrl,
+        images: record.images
+          .slice()
+          .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+          .map((image) => ({
+            id: image.id,
+            createdAt: image.createdAt,
+            imageUrl: URL.createObjectURL(image.blob),
+          })),
         idStatus: record.idStatus,
         identifiedAt: record.identifiedAt,
         candidates: record.candidates,
@@ -112,13 +120,78 @@ export default function PlantDetailPage() {
   }, [refreshPlant]);
 
   useEffect(() => {
+    const nextUrls = new Set(plant?.images.map((image) => image.imageUrl) ?? []);
+
+    for (const existingUrl of imageUrlsRef.current) {
+      if (!nextUrls.has(existingUrl)) {
+        URL.revokeObjectURL(existingUrl);
+      }
+    }
+
+    imageUrlsRef.current = nextUrls;
+  }, [plant]);
+
+  useEffect(() => {
     return () => {
-      if (imageUrlRef.current) {
-        URL.revokeObjectURL(imageUrlRef.current);
-        imageUrlRef.current = null;
+      for (const existingUrl of imageUrlsRef.current) {
+        URL.revokeObjectURL(existingUrl);
+      }
+      imageUrlsRef.current.clear();
+
+      if (pendingImageUrlRef.current) {
+        URL.revokeObjectURL(pendingImageUrlRef.current);
+        pendingImageUrlRef.current = null;
       }
     };
   }, []);
+
+  const handleAddPhotoCapture = (file: File) => {
+    const objectUrl = URL.createObjectURL(file);
+
+    if (pendingImageUrlRef.current) {
+      URL.revokeObjectURL(pendingImageUrlRef.current);
+    }
+
+    pendingImageUrlRef.current = objectUrl;
+    setPendingFile(file);
+    setPendingImage(objectUrl);
+  };
+
+  const clearPendingPhoto = () => {
+    if (pendingImageUrlRef.current) {
+      URL.revokeObjectURL(pendingImageUrlRef.current);
+      pendingImageUrlRef.current = null;
+    }
+
+    setPendingFile(null);
+    setPendingImage(null);
+  };
+
+  const savePendingPhoto = async () => {
+    if (!id || !pendingFile) {
+      return;
+    }
+
+    const current = await dbGetPlant(id);
+    if (!current) {
+      return;
+    }
+
+    await dbPutPlant({
+      ...current,
+      images: [
+        ...current.images,
+        {
+          id: createImageId(),
+          createdAt: new Date().toISOString(),
+          blob: pendingFile,
+        },
+      ],
+    });
+
+    clearPendingPhoto();
+    await refreshPlant();
+  };
 
   const identifyPlant = useCallback(async () => {
     if (!id) {
@@ -148,7 +221,12 @@ export default function PlantDetailPage() {
       });
       await refreshPlant();
 
-      const resizedBlob = await resizeImageForIdentify(current.imageBlob);
+      const latestImage = current.images[current.images.length - 1];
+      if (!latestImage) {
+        throw new Error("No image");
+      }
+
+      const resizedBlob = await resizeImageForIdentify(latestImage.blob);
 
       const fd = new FormData();
       fd.append("plantId", id);
@@ -250,6 +328,8 @@ export default function PlantDetailPage() {
     plant.candidates.length > 0 &&
     !plant.chosenCandidate &&
     (typeof topCandidateConfidence !== "number" || topCandidateConfidence < 0.2);
+  const latestImage = plant?.images[plant.images.length - 1] ?? null;
+  const isAddingPhoto = pendingImage !== null;
 
   return (
     <div className="min-h-screen bg-emerald-50/40 px-4 py-6 text-zinc-900 sm:px-6">
@@ -264,12 +344,19 @@ export default function PlantDetailPage() {
           </section>
         ) : plant ? (
           <section className="space-y-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-200">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={plant.imageUrl}
-              alt={plant.nickname ?? "Yard plant"}
-              className="h-auto w-full rounded-xl object-cover"
-            />
+            {latestImage ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={latestImage.imageUrl}
+                  alt={plant.nickname ?? "Yard plant"}
+                  className="h-auto w-full rounded-xl object-cover"
+                />
+                <p className="text-xs text-zinc-500">
+                  Latest photo: {new Date(latestImage.createdAt).toLocaleString()}
+                </p>
+              </>
+            ) : null}
 
             <div className="space-y-1">
               <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
@@ -277,6 +364,60 @@ export default function PlantDetailPage() {
               </h1>
               <p className="text-sm text-zinc-600">Captured {new Date(plant.createdAt).toLocaleString()}</p>
             </div>
+
+            {isAddingPhoto && pendingImage ? (
+              <div className="space-y-3 rounded-xl bg-zinc-50 p-3 ring-1 ring-zinc-200">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={pendingImage}
+                  alt="Pending plant photo"
+                  className="h-auto w-full rounded-xl object-cover"
+                />
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void savePendingPhoto();
+                    }}
+                    className="inline-flex min-h-12 items-center justify-center rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-500"
+                  >
+                    Save Photo
+                  </button>
+                  <CameraCapture label="Retake" onCapture={handleAddPhotoCapture} />
+                  <button
+                    type="button"
+                    onClick={clearPendingPhoto}
+                    className="inline-flex min-h-12 items-center justify-center rounded-full border border-zinc-300 bg-white px-5 py-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <CameraCapture label="Add Photo" onCapture={handleAddPhotoCapture} />
+            )}
+
+            {plant.images.length > 1 ? (
+              <div className="space-y-2 rounded-xl bg-zinc-50 p-3 ring-1 ring-zinc-200">
+                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Photos</p>
+                <div className="space-y-3">
+                  {plant.images.map((image, index) => (
+                    <div key={image.id} className="space-y-1">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={image.imageUrl}
+                        alt={`${plant.nickname ?? "Plant"} photo ${index + 1}`}
+                        className="h-auto w-full rounded-xl object-cover"
+                      />
+                      <p className="text-xs text-zinc-500">
+                        {index === 0 ? "Original" : index === plant.images.length - 1 ? "Latest" : "Photo"}{" "}
+                        · {new Date(image.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <div className="rounded-xl bg-zinc-50 p-3 ring-1 ring-zinc-200">
               <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Plant ID</p>

@@ -1,4 +1,4 @@
-import type { PlantDbRecord } from "@/lib/types";
+import type { PlantDbRecord, PlantImage } from "@/lib/types";
 
 const DB_NAME = "yard-app";
 const DB_VERSION = 1;
@@ -31,13 +31,44 @@ function openDb(): Promise<IDBDatabase> {
 }
 
 function normalizePlantRecord(raw: unknown): PlantDbRecord {
-  const record = raw as Partial<PlantDbRecord>;
+  const record = raw as Partial<PlantDbRecord> & {
+    imageBlob?: Blob;
+    blob?: Blob;
+    images?: Array<Partial<PlantImage>>;
+  };
+  const normalizedImages: PlantImage[] = Array.isArray(record.images)
+    ? record.images
+        .map((image, index) => {
+          const blob = image?.blob;
+          if (!(blob instanceof Blob)) {
+            return null;
+          }
+
+          return {
+            id: String(image.id ?? `${record.id ?? "plant"}-image-${index}`),
+            createdAt: String(image.createdAt ?? record.createdAt ?? new Date().toISOString()),
+            blob,
+          };
+        })
+        .filter((image): image is PlantImage => image !== null)
+    : [];
+  const legacyBlob = record.imageBlob instanceof Blob ? record.imageBlob : null;
+  const fallbackBlob = record.blob instanceof Blob ? record.blob : null;
+  const primaryBlob = legacyBlob ?? fallbackBlob;
+
+  if (normalizedImages.length === 0 && primaryBlob) {
+    normalizedImages.push({
+      id: `${String(record.id ?? "plant")}-image-0`,
+      createdAt: String(record.createdAt ?? new Date().toISOString()),
+      blob: primaryBlob,
+    });
+  }
 
   return {
     id: String(record.id ?? ""),
     createdAt: String(record.createdAt ?? ""),
     nickname: record.nickname ?? null,
-    imageBlob: record.imageBlob as Blob,
+    images: normalizedImages,
     idStatus: record.idStatus ?? "unidentified",
     identifiedAt: record.identifiedAt,
     candidates: record.candidates,

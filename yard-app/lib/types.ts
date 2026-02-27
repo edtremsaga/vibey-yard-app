@@ -7,11 +7,17 @@ export type Candidate = {
   source?: string;
 };
 
+export type PlantImage = {
+  id: string;
+  createdAt: string;
+  blob: Blob;
+};
+
 export type PlantDbRecord = {
   id: string;
   createdAt: string;
   nickname: string | null;
-  imageBlob: Blob;
+  images: PlantImage[];
 
   idStatus: PlantIdStatus;
   identifiedAt?: string;

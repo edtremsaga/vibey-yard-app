@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from "react";
 
 type Plant = Omit<
   PlantDbRecord,
-  "imageBlob" | "identifiedAt" | "candidates" | "chosenCandidate"
+  "images" | "identifiedAt" | "candidates" | "chosenCandidate"
 > & {
   imageUrl: string;
 };
@@ -77,13 +77,22 @@ export default function Home() {
       try {
         const records = await dbGetAllPlants();
         const sorted = [...records].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-        const loadedPlants = sorted.map((record) => ({
-          id: record.id,
-          createdAt: record.createdAt,
-          nickname: record.nickname,
-          idStatus: record.idStatus,
-          imageUrl: URL.createObjectURL(record.imageBlob),
-        }));
+        const loadedPlants = sorted
+          .map((record) => {
+            const latestImage = record.images[record.images.length - 1];
+            if (!latestImage) {
+              return null;
+            }
+
+            return {
+              id: record.id,
+              createdAt: record.createdAt,
+              nickname: record.nickname,
+              idStatus: record.idStatus,
+              imageUrl: URL.createObjectURL(latestImage.blob),
+            };
+          })
+          .filter((plant): plant is Plant => plant !== null);
 
         if (!active) {
           for (const plant of loadedPlants) {
@@ -167,13 +176,23 @@ export default function Home() {
       id: createPlantId(),
       createdAt: new Date().toISOString(),
       nickname: trimmedNickname === "" ? null : trimmedNickname,
-      imageBlob: pendingFile,
+      images: [
+        {
+          id: `${createPlantId()}-image-0`,
+          createdAt: new Date().toISOString(),
+          blob: pendingFile,
+        },
+      ],
       idStatus: "unidentified" as const,
     };
 
     try {
       await dbPutPlant(record);
-      const imageUrl = URL.createObjectURL(record.imageBlob);
+      const latestImage = record.images[record.images.length - 1];
+      if (!latestImage) {
+        return null;
+      }
+      const imageUrl = URL.createObjectURL(latestImage.blob);
 
       const newPlant: Plant = {
         id: record.id,
