@@ -33,16 +33,19 @@ export async function POST(request: Request) {
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20_000);
-
-    const response = await fetch(
-      `https://my-api.plantnet.org/v2/identify/all?api-key=${encodeURIComponent(apiKey)}&nb-results=5`,
-      {
-        method: "POST",
-        body: plantnetForm,
-        signal: controller.signal,
-      }
-    );
-    clearTimeout(timeout);
+    let response: Response;
+    try {
+      response = await fetch(
+        `https://my-api.plantnet.org/v2/identify/all?api-key=${encodeURIComponent(apiKey)}&nb-results=5`,
+        {
+          method: "POST",
+          body: plantnetForm,
+          signal: controller.signal,
+        }
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!response.ok) {
       const bodyText = await response.text();
