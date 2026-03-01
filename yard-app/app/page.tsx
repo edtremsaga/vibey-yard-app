@@ -463,7 +463,7 @@ export default function Home() {
               ))}
             </div>
 
-            <div className="fixed right-4 bottom-6 sm:right-6">
+            <div className="fixed right-4 bottom-6 z-30 sm:right-6">
               <CameraCapture label="+ Add" onCapture={handleCapture} />
             </div>
           </section>
